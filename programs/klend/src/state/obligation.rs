@@ -1,9 +1,10 @@
 use std::{
     cmp::Ordering,
-    fmt::{self, Display, Formatter},
+    fmt::{self, Display, Formatter}, ops::AddAssign,
 };
 
 use anchor_lang::{account, err, prelude::*, solana_program::clock::Slot, Result};
+use bytemuck::{Pod, Zeroable};
 use derivative::Derivative;
 
 use super::{LastUpdate, LtvMaxWithdrawalCheck};
@@ -12,6 +13,37 @@ use crate::{
     xmsg, AssetTier, BigFractionBytes, LendingError,
 };
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Zeroable, Pod, Default)]
+pub struct AlignedU128(pub [u8; 16]);
+
+impl Into<u128> for AlignedU128 {
+    fn into(self) -> u128 {
+        u128::from_le_bytes(self.0)
+    }
+}
+
+impl From<u128> for AlignedU128 {
+    fn from(value: u128) -> Self {
+        Self(value.to_le_bytes())
+    }
+}
+
+impl AddAssign<u128> for AlignedU128 {
+    fn add_assign(&mut self, rhs: u128) {
+        let lhs = u128::from_le_bytes(self.0);
+        let result = lhs + rhs;
+        self.0 = result.to_le_bytes();
+    }
+}
+
+impl AlignedU128 {
+
+    pub fn to_u128(&self) -> u128 {
+        u128::from_le_bytes(self.0)
+    }
+
+}
 static_assertions::const_assert_eq!(OBLIGATION_SIZE, std::mem::size_of::<Obligation>());
 static_assertions::const_assert_eq!(0, std::mem::size_of::<Obligation>() % 8);
 #[derive(PartialEq, Derivative)]
@@ -25,13 +57,13 @@ pub struct Obligation {
     pub owner: Pubkey,
     pub deposits: [ObligationCollateral; 8],
     pub lowest_reserve_deposit_liquidation_ltv: u64,
-    pub deposited_value_sf: u128,
+    pub deposited_value_sf: AlignedU128,
 
     pub borrows: [ObligationLiquidity; 5],
-    pub borrow_factor_adjusted_debt_value_sf: u128,
-    pub borrowed_assets_market_value_sf: u128,
-    pub allowed_borrow_value_sf: u128,
-    pub unhealthy_borrow_value_sf: u128,
+    pub borrow_factor_adjusted_debt_value_sf: AlignedU128,
+    pub borrowed_assets_market_value_sf: AlignedU128,
+    pub allowed_borrow_value_sf: AlignedU128,
+    pub unhealthy_borrow_value_sf: AlignedU128,
 
     pub deposits_asset_tiers: [u8; 8],
     pub borrows_asset_tiers: [u8; 5],
@@ -70,12 +102,12 @@ impl Default for Obligation {
             owner: Pubkey::default(),
             deposits: [ObligationCollateral::default(); 8],
             borrows: [ObligationLiquidity::default(); 5],
-            deposited_value_sf: 0,
-            borrowed_assets_market_value_sf: 0,
-            allowed_borrow_value_sf: 0,
-            unhealthy_borrow_value_sf: 0,
+            deposited_value_sf: 0u128.into(),
+            borrowed_assets_market_value_sf: 0.into(),
+            allowed_borrow_value_sf: 0.into(),
+            unhealthy_borrow_value_sf: 0.into(),
             lowest_reserve_deposit_liquidation_ltv: 0,
-            borrow_factor_adjusted_debt_value_sf: 0,
+            borrow_factor_adjusted_debt_value_sf: 0.into(),
             deposits_asset_tiers: [u8::MAX; 8],
             borrows_asset_tiers: [u8::MAX; 5],
             elevation_group: ELEVATION_GROUP_NONE,
@@ -98,10 +130,10 @@ impl Display for Obligation {
         write!(
             f,
             "Obligation summary, collateral value ${}, liquidity risk adjusted value ${}, liquidity risk unadjusted value ${} ltv {}%",
-            Fraction::from_bits(self.deposited_value_sf).to_display(),
-            Fraction::from_bits(self.borrow_factor_adjusted_debt_value_sf).to_display(),
-            Fraction::from_bits(self.borrowed_assets_market_value_sf).to_display(),
-            if self.deposited_value_sf > 0 {self.loan_to_value().to_percent::<u16>().unwrap()} else { 0 },
+            Fraction::from_bits(self.deposited_value_sf.into()).to_display(),
+            Fraction::from_bits(self.borrow_factor_adjusted_debt_value_sf.into()).to_display(),
+            Fraction::from_bits(self.borrowed_assets_market_value_sf.into()).to_display(),
+            if self.deposited_value_sf.to_u128() > 0 {self.loan_to_value().to_percent::<u16>().unwrap()} else { 0 },
         )?;
 
         for collateral in self
@@ -113,7 +145,7 @@ impl Display for Obligation {
                 f,
                 "\n  Collateral reserve: {}, value: ${}, lamports: {}",
                 collateral.deposit_reserve,
-                Fraction::from_bits(collateral.market_value_sf).to_display(),
+                Fraction::from_bits(collateral.market_value_sf.into()).to_display(),
                 collateral.deposited_amount,
             )?;
         }
@@ -127,8 +159,8 @@ impl Display for Obligation {
                 f,
                 "\n  Borrowed reserve  : {}, value: ${}, lamports: {}",
                 liquidity.borrow_reserve,
-                Fraction::from_bits(liquidity.market_value_sf).to_display(),
-                Fraction::from_bits(liquidity.borrowed_amount_sf).to_num::<u128>(),
+                Fraction::from_bits(liquidity.market_value_sf.into()).to_display(),
+                Fraction::from_bits(liquidity.borrowed_amount_sf.into()).to_num::<u128>(),
             )?;
         }
 
@@ -159,23 +191,23 @@ impl Obligation {
     }
 
     pub fn loan_to_value(&self) -> Fraction {
-        Fraction::from_bits(self.borrow_factor_adjusted_debt_value_sf)
-            / Fraction::from_bits(self.deposited_value_sf)
+        Fraction::from_bits(self.borrow_factor_adjusted_debt_value_sf.into())
+            / Fraction::from_bits(self.deposited_value_sf.into())
     }
 
     pub fn no_bf_loan_to_value(&self) -> Fraction {
-        Fraction::from_bits(self.borrowed_assets_market_value_sf)
-            / Fraction::from_bits(self.deposited_value_sf)
+        Fraction::from_bits(self.borrowed_assets_market_value_sf.into())
+            / Fraction::from_bits(self.deposited_value_sf.into())
     }
 
     pub fn unhealthy_loan_to_value(&self) -> Fraction {
-        Fraction::from_bits(self.unhealthy_borrow_value_sf)
-            / Fraction::from_bits(self.deposited_value_sf)
+        Fraction::from_bits(self.unhealthy_borrow_value_sf.into())
+            / Fraction::from_bits(self.deposited_value_sf.into())
     }
 
     pub fn repay(&mut self, settle_amount: Fraction, liquidity_index: usize) {
         let liquidity = &mut self.borrows[liquidity_index];
-        if settle_amount == Fraction::from_bits(liquidity.borrowed_amount_sf) {
+        if settle_amount == Fraction::from_bits(liquidity.borrowed_amount_sf.into()) {
             self.borrows[liquidity_index] = ObligationLiquidity::default();
             self.borrows_asset_tiers[liquidity_index] = u8::MAX;
         } else {
@@ -209,25 +241,25 @@ impl Obligation {
         let (highest_allowed_borrow_value, withdraw_collateral_ltv_pct) =
             if ltv_max_withdrawal_check == LtvMaxWithdrawalCheck::LiquidationThreshold {
                 (
-                    Fraction::from_bits(self.unhealthy_borrow_value_sf.saturating_sub(1)),
+                    Fraction::from_bits(self.unhealthy_borrow_value_sf.to_u128().saturating_sub(1)),
                     reserve_liq_threshold_pct,
                 )
             } else {
                 (
-                    Fraction::from_bits(self.allowed_borrow_value_sf),
+                    Fraction::from_bits(self.allowed_borrow_value_sf.into()),
                     reserve_max_ltv_pct,
                 )
             };
 
         let borrow_factor_adjusted_debt_value =
-            Fraction::from_bits(self.borrow_factor_adjusted_debt_value_sf);
+            Fraction::from_bits(self.borrow_factor_adjusted_debt_value_sf.into());
 
         if highest_allowed_borrow_value <= borrow_factor_adjusted_debt_value {
             return Fraction::ZERO;
         }
 
         if withdraw_collateral_ltv_pct == 0 {
-            return Fraction::from_bits(obligation_collateral.market_value_sf);
+            return Fraction::from_bits(obligation_collateral.market_value_sf.into());
         }
 
         highest_allowed_borrow_value.saturating_sub(borrow_factor_adjusted_debt_value) * 100_u128
@@ -236,8 +268,8 @@ impl Obligation {
 
     pub fn remaining_borrow_value(&self) -> Fraction {
         Fraction::from_bits(
-            self.allowed_borrow_value_sf
-                .saturating_sub(self.borrow_factor_adjusted_debt_value_sf),
+            self.allowed_borrow_value_sf.to_u128()
+                .saturating_sub(self.borrow_factor_adjusted_debt_value_sf.into()),
         )
     }
 
@@ -401,7 +433,7 @@ impl Obligation {
             .iter()
             .enumerate()
             .filter_map(|(index, borrow)| {
-                if borrow.borrow_reserve != Pubkey::default() && borrow.borrowed_amount_sf > 0 {
+                if borrow.borrow_reserve != Pubkey::default() && borrow.borrowed_amount_sf.to_u128() > 0 {
                     Some(AssetTier::try_from(self.borrows_asset_tiers[index]).unwrap())
                 } else {
                     None
@@ -415,22 +447,22 @@ impl Obligation {
             None
         } else {
             Some(
-                Fraction::from_bits(self.borrows.iter().map(|l| l.borrowed_amount_sf).sum())
+                Fraction::from_bits(self.borrows.iter().map(|l| l.borrowed_amount_sf.to_u128()).sum())
                     .to_ceil::<u64>(),
             )
         }
     }
 
     pub fn get_bf_adjusted_debt_value(&self) -> Fraction {
-        Fraction::from_bits(self.borrow_factor_adjusted_debt_value_sf)
+        Fraction::from_bits(self.borrow_factor_adjusted_debt_value_sf.into())
     }
 
     pub fn get_allowed_borrow_value(&self) -> Fraction {
-        Fraction::from_bits(self.allowed_borrow_value_sf)
+        Fraction::from_bits(self.allowed_borrow_value_sf.into())
     }
 
     pub fn get_unhealthy_borrow_value(&self) -> Fraction {
-        Fraction::from_bits(self.unhealthy_borrow_value_sf)
+        Fraction::from_bits(self.unhealthy_borrow_value_sf.into())
     }
 
     pub fn has_referrer(&self) -> bool {
@@ -496,7 +528,7 @@ pub struct InitObligationArgs {
 pub struct ObligationCollateral {
     pub deposit_reserve: Pubkey,
     pub deposited_amount: u64,
-    pub market_value_sf: u128,
+    pub market_value_sf: AlignedU128,
     pub borrowed_amount_against_this_collateral_in_elevation_group: u64,
     pub padding: [u64; 9],
 }
@@ -506,7 +538,7 @@ impl ObligationCollateral {
         Self {
             deposit_reserve,
             deposited_amount: 0,
-            market_value_sf: 0,
+            market_value_sf: 0.into(),
             borrowed_amount_against_this_collateral_in_elevation_group: 0,
             padding: [0; 9],
         }
@@ -536,9 +568,9 @@ pub struct ObligationLiquidity {
     pub borrow_reserve: Pubkey,
     pub cumulative_borrow_rate_bsf: BigFractionBytes,
     pub padding: u64,
-    pub borrowed_amount_sf: u128,
-    pub market_value_sf: u128,
-    pub borrow_factor_adjusted_market_value_sf: u128,
+    pub borrowed_amount_sf: AlignedU128,
+    pub market_value_sf: AlignedU128,
+    pub borrow_factor_adjusted_market_value_sf: AlignedU128,
 
     pub borrowed_amount_outside_elevation_groups: u64,
 
@@ -551,9 +583,9 @@ impl ObligationLiquidity {
             borrow_reserve,
             cumulative_borrow_rate_bsf: cumulative_borrow_rate_bf.into(),
             padding: 0,
-            borrowed_amount_sf: 0,
-            market_value_sf: 0,
-            borrow_factor_adjusted_market_value_sf: 0,
+            borrowed_amount_sf: 0.into(),
+            market_value_sf: 0.into(),
+            borrow_factor_adjusted_market_value_sf: 0.into(),
             borrowed_amount_outside_elevation_groups: 0,
             padding2: [0; 7],
         }
@@ -561,12 +593,12 @@ impl ObligationLiquidity {
 
     pub fn repay(&mut self, settle_amount: Fraction) {
         self.borrowed_amount_sf =
-            (Fraction::from_bits(self.borrowed_amount_sf) - settle_amount).to_bits();
+            (Fraction::from_bits(self.borrowed_amount_sf.into()) - settle_amount).to_bits().into();
     }
 
     pub fn borrow(&mut self, borrow_amount: Fraction) {
         self.borrowed_amount_sf =
-            (Fraction::from_bits(self.borrowed_amount_sf) + borrow_amount).to_bits();
+            (Fraction::from_bits(self.borrowed_amount_sf.into()) + borrow_amount).to_bits().into();
     }
 
     pub fn accrue_interest(&mut self, new_cumulative_borrow_rate: BigFraction) -> Result<()> {
@@ -581,12 +613,13 @@ impl ObligationLiquidity {
             }
             Ordering::Equal => {}
             Ordering::Greater => {
-                let borrowed_amount_sf_u256 = U256::from(self.borrowed_amount_sf)
+                let borrowed_amount_sf_u256 = U256::from(self.borrowed_amount_sf.to_u128())
                     * new_cumulative_borrow_rate_bsf
                     / former_cumulative_borrow_rate_bsf;
-                self.borrowed_amount_sf = borrowed_amount_sf_u256
+                let borrowed_amount_sf: u128 = borrowed_amount_sf_u256
                     .try_into()
                     .map_err(|_| error!(LendingError::MathOverflow))?;
+                self.borrowed_amount_sf = borrowed_amount_sf.into();
                 self.cumulative_borrow_rate_bsf.value = new_cumulative_borrow_rate_bsf.0;
             }
         }

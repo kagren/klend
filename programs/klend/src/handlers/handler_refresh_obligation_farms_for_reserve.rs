@@ -133,7 +133,7 @@ fn amount_for_obligation(
         ReserveFarmKind::Debt => {
             let liquidity = obligation.find_liquidity_in_borrows(*reserve_address);
             if let Ok((obligation_liquidity, _)) = liquidity {
-                let fraction = Fraction::from_bits(obligation_liquidity.borrowed_amount_sf);
+                let fraction = Fraction::from_bits(obligation_liquidity.borrowed_amount_sf.into());
                 fraction.to_floor::<u64>()
             } else {
                 0

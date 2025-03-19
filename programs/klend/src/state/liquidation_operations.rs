@@ -3,13 +3,10 @@ use std::cmp::{max, min, Ordering};
 use anchor_lang::{err, prelude::msg, Result};
 
 use crate::{
-    fraction::FractionExtra,
-    utils::{
+    fraction::FractionExtra, utils::{
         fraction::fraction, secs, Fraction, DUST_LAMPORT_THRESHOLD, ELEVATION_GROUP_NONE,
         MIN_AUTODELEVERAGE_BONUS_BPS,
-    },
-    xmsg, CalculateLiquidationResult, LendingError, LendingMarket, LiquidationParams, Obligation,
-    ObligationCollateral, ObligationLiquidity, Reserve, ReserveConfig,
+    }, xmsg, AlignedU128, CalculateLiquidationResult, LendingError, LendingMarket, LiquidationParams, Obligation, ObligationCollateral, ObligationLiquidity, Reserve, ReserveConfig
 };
 
 pub fn max_liquidatable_borrowed_amount(
@@ -20,9 +17,9 @@ pub fn max_liquidatable_borrowed_amount(
     user_ltv: Fraction,
     insolvency_risk_ltv_pct: u8,
 ) -> Fraction {
-    let obligation_debt_for_liquidity_mv = Fraction::from_bits(liquidity.market_value_sf);
+    let obligation_debt_for_liquidity_mv = Fraction::from_bits(liquidity.market_value_sf.into());
 
-    let total_obligation_debt_mv = Fraction::from_bits(obligation.borrowed_assets_market_value_sf);
+    let total_obligation_debt_mv = Fraction::from_bits(obligation.borrowed_assets_market_value_sf.into());
 
     let liquidation_max_debt_close_factor_rate =
         if user_ltv > Fraction::from_percent(insolvency_risk_ltv_pct) {
@@ -43,7 +40,7 @@ pub fn max_liquidatable_borrowed_amount(
 
     let max_liquidation_ratio = max_liquidatable_mv / obligation_debt_for_liquidity_mv;
 
-    let borrowed_amount = Fraction::from_bits(liquidity.borrowed_amount_sf);
+    let borrowed_amount = Fraction::from_bits(liquidity.borrowed_amount_sf.into());
     borrowed_amount * max_liquidation_ratio
 }
 
@@ -61,7 +58,7 @@ pub fn calculate_liquidation(
     is_collateral_reserve_lowest_liquidation_ltv: bool,
     max_allowed_ltv_override_pct_opt: Option<u64>,
 ) -> Result<CalculateLiquidationResult> {
-    if obligation.deposited_value_sf == 0 {
+    if <AlignedU128 as Into<u128>>::into(obligation.deposited_value_sf) == 0 {
         msg!("Deposited value backing a loan cannot be 0");
         return err!(LendingError::InvalidObligationCollateral);
     }
@@ -82,9 +79,9 @@ pub fn calculate_liquidation(
 
     let bonus_rate = liquidation_bonus_rate + Fraction::ONE;
 
-    let borrowed_amount_f = Fraction::from_bits(liquidity.borrowed_amount_sf);
+    let borrowed_amount_f = Fraction::from_bits(liquidity.borrowed_amount_sf.into());
 
-    let borrowed_value_f = Fraction::from_bits(liquidity.market_value_sf);
+    let borrowed_value_f = Fraction::from_bits(liquidity.market_value_sf.into());
 
     let debt_amount_to_liquidate =
         Fraction::from_num(debt_amount_to_liquidate).min(borrowed_amount_f);
@@ -222,8 +219,8 @@ pub fn check_liquidate_obligation(
 
     if user_ltv >= max_allowed_ltv {
         xmsg!("Obligation is eligible for liquidation, borrowed value (scaled): {}, unhealthy borrow value (scaled): {}, LTV: {}%/{}%, max_allowed_ltv_user {}%, max_allowed_ltv_override {:?}%",
-            Fraction::from_bits(obligation.borrow_factor_adjusted_debt_value_sf).to_display(),
-            Fraction::from_bits(obligation.unhealthy_borrow_value_sf).to_display(),
+            Fraction::from_bits(obligation.borrow_factor_adjusted_debt_value_sf.into()).to_display(),
+            Fraction::from_bits(obligation.unhealthy_borrow_value_sf.into()).to_display(),
             user_ltv.to_percent::<u64>().unwrap(),
             max_allowed_ltv.to_percent::<u64>().unwrap(),
             max_allowed_ltv_user.to_percent::<u64>().unwrap(),
@@ -290,7 +287,7 @@ fn calculate_liquidation_amounts(
     debt_liquidation_amount: Fraction,
     is_below_min_full_liquidation_value_threshold: bool,
 ) -> (Fraction, u64, u64) {
-    let collateral_value = Fraction::from_bits(collateral.market_value_sf);
+    let collateral_value = Fraction::from_bits(collateral.market_value_sf.into());
     match total_liquidation_value_including_bonus.cmp(&collateral_value) {
         Ordering::Greater => {
             let repay_ratio = collateral_value / total_liquidation_value_including_bonus;
