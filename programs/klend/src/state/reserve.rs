@@ -366,8 +366,8 @@ impl Reserve {
 
     pub fn get_withdraw_referrer_fees(&self, referrer_token_state: &ReferrerTokenState) -> u64 {
         let available_unclaimed_sf = min(
-            referrer_token_state.amount_unclaimed_sf,
-            self.liquidity.accumulated_referrer_fees_sf.into(),
+            referrer_token_state.amount_unclaimed_sf.to_u128(),
+            self.liquidity.accumulated_referrer_fees_sf.to_u128(),
         );
         let available_unclaimed: u64 = Fraction::from_bits(available_unclaimed_sf).to_floor();
         min(available_unclaimed, self.liquidity.available_amount)
@@ -655,7 +655,7 @@ impl ReserveLiquidity {
         self.accumulated_referrer_fees_sf = new_accumulated_referrer_fees_f.to_bits().into();
 
         let referrer_amount_unclaimed_f =
-            Fraction::from_bits(referrer_token_state.amount_unclaimed_sf);
+            Fraction::from_bits(referrer_token_state.amount_unclaimed_sf.into());
 
         let new_referrer_amount_unclaimed_f = referrer_amount_unclaimed_f
             .checked_sub(withdraw_amount_f)
@@ -668,7 +668,7 @@ impl ReserveLiquidity {
                 error!(LendingError::MathOverflow)
             })?;
 
-        referrer_token_state.amount_unclaimed_sf = new_referrer_amount_unclaimed_f.to_bits();
+        referrer_token_state.amount_unclaimed_sf = new_referrer_amount_unclaimed_f.to_bits().into();
 
         Ok(())
     }

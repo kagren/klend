@@ -14,8 +14,8 @@ pub fn process(ctx: Context<InitReferrerTokenState>) -> Result<()> {
     *referrer_token_state = ReferrerTokenState {
         referrer,
         mint: reserve.liquidity.mint_pubkey,
-        amount_unclaimed_sf: 0,
-        amount_cumulative_sf: 0,
+        amount_unclaimed_sf: 0.into(),
+        amount_cumulative_sf: 0.into(),
         bump: bump.into(),
         padding: [0; 31],
     };

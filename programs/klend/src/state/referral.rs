@@ -6,6 +6,8 @@ use solana_program::pubkey::Pubkey;
 
 use crate::utils::{Fraction, REFERRER_STATE_SIZE, REFERRER_TOKEN_STATE_SIZE, USER_METADATA_SIZE};
 
+use super::AlignedU128;
+
 static_assertions::const_assert_eq!(
     REFERRER_TOKEN_STATE_SIZE,
     std::mem::size_of::<ReferrerTokenState>()
@@ -18,8 +20,8 @@ static_assertions::const_assert_eq!(0, std::mem::size_of::<ReferrerTokenState>()
 pub struct ReferrerTokenState {
     pub referrer: Pubkey,
     pub mint: Pubkey,
-    pub amount_unclaimed_sf: u128,
-    pub amount_cumulative_sf: u128,
+    pub amount_unclaimed_sf: AlignedU128,
+    pub amount_cumulative_sf: AlignedU128,
     pub bump: u64,
 
     #[derivative(Debug = "ignore")]
@@ -36,8 +38,8 @@ impl Display for ReferrerTokenState {
             bump: _,
             padding: _,
         } = self;
-        let amount_unclaimed: u64 = Fraction::from_bits(*amount_unclaimed_sf).to_num();
-        let amount_cumulative: u64 = Fraction::from_bits(*amount_cumulative_sf).to_num();
+        let amount_unclaimed: u64 = Fraction::from_bits(amount_unclaimed_sf.to_u128()).to_num();
+        let amount_cumulative: u64 = Fraction::from_bits(amount_cumulative_sf.to_u128()).to_num();
         write!(
             f,
             "Referrer Account: referrer: {}, mint: {}, amount_unclaimed (integer part): {}, amount_cumulative (integer part): {}",
