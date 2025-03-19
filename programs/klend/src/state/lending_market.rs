@@ -5,6 +5,7 @@ use derivative::Derivative;
 #[cfg(feature = "serde")]
 use serde_values::*;
 
+use super::AlignedU128;
 #[cfg(feature = "serde")]
 use super::{serde_bool_u8, serde_string, serde_utf_string};
 use crate::{
@@ -84,7 +85,7 @@ pub struct LendingMarket {
             deserialize_with = "deserialize_min_net_value"
         )
     )]
-    pub min_net_value_in_obligation_sf: u128,
+    pub min_net_value_in_obligation_sf: AlignedU128,
 
     pub min_value_skip_liquidation_ltv_checks: u64,
 
@@ -140,7 +141,7 @@ impl Default for LendingMarket {
             min_value_skip_liquidation_ltv_checks: 0,
             min_value_skip_liquidation_bf_checks: 0,
             elevation_group_padding: [0; 90],
-            min_net_value_in_obligation_sf: MIN_NET_VALUE_IN_OBLIGATION.to_bits(),
+            min_net_value_in_obligation_sf: MIN_NET_VALUE_IN_OBLIGATION.to_bits().into(),
             name: [0; 32],
             individual_autodeleverage_margin_call_period_secs: 0,
             min_initial_deposit_amount: DEFAULT_MIN_DEPOSIT_AMOUNT,

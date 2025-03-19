@@ -410,7 +410,7 @@ pub fn deposit_obligation_collateral(
         obligation,
         deposit_reserve,
         pre_collateral_market_value_f,
-        Fraction::from_bits(lending_market.min_net_value_in_obligation_sf),
+        Fraction::from_bits(lending_market.min_net_value_in_obligation_sf.into()),
     )?;
 
     Ok(())
@@ -565,7 +565,7 @@ pub fn withdraw_obligation_collateral(
         withdraw_reserve,
         reserve_liq_threshold_ltv_pct,
         Fraction::from_bits(obligation.deposits[collateral_index].market_value_sf.into()),
-        Fraction::from_bits(lending_market.min_net_value_in_obligation_sf),
+        Fraction::from_bits(lending_market.min_net_value_in_obligation_sf.into()),
     )?;
 
     Ok(withdraw_amount)
@@ -709,7 +709,7 @@ where
         obligation,
         repay_reserve,
         Fraction::from_bits(obligation.borrows[liquidity_index].market_value_sf.into()),
-        Fraction::from_bits(lending_market.min_net_value_in_obligation_sf),
+        Fraction::from_bits(lending_market.min_net_value_in_obligation_sf.into()),
     )?;
 
     Ok(repay_amount)

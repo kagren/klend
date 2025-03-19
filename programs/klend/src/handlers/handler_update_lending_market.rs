@@ -211,13 +211,13 @@ pub fn process(
                 u128::from_le_bytes(value[..16].try_into().unwrap());
             msg!(
                 "Prev Value is {}",
-                Fraction::from_bits(market.min_net_value_in_obligation_sf)
+                Fraction::from_bits(market.min_net_value_in_obligation_sf.into())
             );
             msg!(
                 "New Value is {}",
                 Fraction::from_bits(min_net_value_in_obligation_sf)
             );
-            market.min_net_value_in_obligation_sf = min_net_value_in_obligation_sf;
+            market.min_net_value_in_obligation_sf = min_net_value_in_obligation_sf.into();
         }
         UpdateLendingMarketMode::UpdateMinValueLtvSkipPriorityLiqCheck => {
             let min_value_skip_liquidation_ltv_checks =
